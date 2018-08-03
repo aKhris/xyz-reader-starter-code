@@ -6,17 +6,10 @@
 
     <dimen name="fab_elevation">2dp</dimen>
     <dimen name="fab_press_translation_z">6dp</dimen>
-    <dimen name="fab_margin">24dp</dimen>
-    <dimen name="detail_body_horiz_margin">4dp</dimen>
     <dimen name="detail_scrollview_overlap_top">0dp</dimen>
     <dimen name="cardview_elevation">8dp</dimen>
-    <dimen name="list_thumbnail_size">200dp</dimen>
-    <dimen name="list_item_cardview_margin">4dp</dimen>
-    <dimen name="list_item_cardview_height">250dp</dimen>
-    <dimen name="list_item_text_padding">16dp</dimen>
     <dimen name="app_bar_elevation">8dp</dimen>
-    <dimen name="app_bar_height">112dp</dimen>
-    <dimen name="toolbar_title_side_margin">8dp</dimen>
-    <dimen name="list_bottom_padding">28dp</dimen>
+    <dimen name="list_item_article_title_text_size">16sp</dimen>
+    <dimen name="list_item_article_subtitle_text_size">14sp</dimen>
 
 </resources>

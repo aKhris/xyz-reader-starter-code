@@ -1,6 +1,7 @@
 package com.example.xyzreader.ui;
 
 
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -52,10 +53,13 @@ import butterknife.OnClick;
 
 /**
  * A fragment representing a single Article detail screen.
+ *
+ * All the transition-related parts are taken from here:
+ * https://android-developers.googleblog.com/2018/02/continuous-shared-element-transitions.html
+ * (and corresponding github repository: https://github.com/google/android-transition-examples/tree/master/GridToPager)
  */
 public class ArticleDetailFragment extends Fragment implements
-        LoaderManager.LoaderCallbacks<Cursor>{
-
+        LoaderManager.LoaderCallbacks<Cursor>, MenuItem.OnMenuItemClickListener {
 
     @BindView(R.id.article_title) TextView titleView;
     @BindView(R.id.article_byline) TextView bylineView;
@@ -68,17 +72,32 @@ public class ArticleDetailFragment extends Fragment implements
     @BindView(R.id.toolbar) Toolbar toolbar;
     @BindView(R.id.collapsing_bar) CollapsingToolbarLayout collapsingBar;
 
+    // Key name for saving scroll position of nestedscrollview during orientation change;
+    // however it cannot be exactly restored because it's saving position of scrolling, but not the
+    // position of text.
+    private static final String BUNDLE_SCROLL_POSITION = "scrollview_scroll_position";
+
+    // Array of integers to save scroll coordinates during orientation change;
+    private int[] scrollCoordinates = {0,0};
+
+    // Tag using for some logs
     private static final String TAG = "ArticleDetailFragment";
 
+    // Key name of argument passing into static new instance method
     public static final String ARG_ITEM_ID = "item_id";
+    private long mItemId;
+
+    //Loader ID
     private static final int LOADER_ID_ONE_ARTICLE=1;
 
+    //Cursor containing one article for this fragment
     private Cursor mCursor;
-    private long mItemId;
+
     private View mRootView;
 
     private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.sss", Locale.getDefault());
     // Use default locale format
+    @SuppressLint("SimpleDateFormat")
     private SimpleDateFormat outputFormat = new SimpleDateFormat();
     // Most time functions can only handle 1902 - 2037
     private GregorianCalendar START_OF_EPOCH = new GregorianCalendar(2,1,1);
@@ -91,6 +110,7 @@ public class ArticleDetailFragment extends Fragment implements
         @Override
         public void onBitmapLoaded(Bitmap bitmap, Picasso.LoadedFrom from) {
             mPhotoView.setImageBitmap(bitmap);
+            //after setting bitmap to ImageView we must start postponed transition in a parent fragment
             scheduleStartPostponedTransition(mPhotoView);
             Palette
                     .from(bitmap)
@@ -122,6 +142,7 @@ public class ArticleDetailFragment extends Fragment implements
     };
 
 
+
     /**
      * Mandatory empty constructor for the fragment manager to instantiate the
      * fragment (e.g. upon screen orientation changes).
@@ -130,8 +151,9 @@ public class ArticleDetailFragment extends Fragment implements
     }
 
 
-
-
+    /**
+     * Static method to instantiate new fragment and set itemId as an argument
+     */
     public static ArticleDetailFragment newInstance(long itemId) {
         Bundle arguments = new Bundle();
         arguments.putLong(ARG_ITEM_ID, itemId);
@@ -140,7 +162,10 @@ public class ArticleDetailFragment extends Fragment implements
         return fragment;
     }
 
-
+    /**
+     * Getting itemID from arguments (after first initialization)
+     * and scrollCoordinates after orientation change
+     */
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -148,13 +173,16 @@ public class ArticleDetailFragment extends Fragment implements
         if (getArguments()!=null && getArguments().containsKey(ARG_ITEM_ID)) {
             mItemId = getArguments().getLong(ARG_ITEM_ID);
         }
+
+        if(savedInstanceState!=null && savedInstanceState.containsKey(BUNDLE_SCROLL_POSITION)){
+            scrollCoordinates = savedInstanceState.getIntArray(BUNDLE_SCROLL_POSITION);
+        }
+
     }
 
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
-
-        Log.v(getClass().getSimpleName(), "onActivityCreated: "+this.toString());
         // In support library r8, calling initLoader for a fragment in a FragmentPagerAdapter in
         // the fragment's onCreate may cause the same LoaderManager to be dealt to multiple
         // fragments because their mIndex is -1 (haven't been added to the activity yet). Thus,
@@ -162,14 +190,21 @@ public class ArticleDetailFragment extends Fragment implements
         getLoaderManager().initLoader(LOADER_ID_ONE_ARTICLE, null, this);
     }
 
+
+    /**
+     * Initialize views here
+     */
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         mRootView = inflater.inflate(R.layout.fragment_article_detail, container, false);
-
         ButterKnife.bind(this, mRootView);
+
+        //setting transition name according to given itemID
         ViewCompat.setTransitionName(mPhotoView, TransitionUtils.getTransitionName(mItemId));
 
+        //setting up toolbar.
+        //setting navigation icon to make possible to go back to the fragment with a list:
         toolbar.setNavigationIcon(R.drawable.ic_arrow_back);
         toolbar.setNavigationOnClickListener(new View.OnClickListener() {
             @Override
@@ -179,8 +214,9 @@ public class ArticleDetailFragment extends Fragment implements
                 }
             }
         });
-
+        //setting up a menu with a "share" button for sharing content after FAB is scrolled out
         toolbar.inflateMenu(R.menu.menu_article_details);
+        toolbar.getMenu().findItem(R.id.share).setOnMenuItemClickListener(this);
 
         // Listen to AppBarLayout state changing and show/hide it's "share" item
         // (not to have two "share" buttons at the same time on the screen: from the menu
@@ -204,14 +240,20 @@ public class ArticleDetailFragment extends Fragment implements
                 }
             }
         });
-        setHasOptionsMenu(true);
+
+        //show progress bar to show the loading process of the long text to textview
         setLoading(true);
+
         return mRootView;
     }
 
-
+    /**
+     * This method is binded to share floatingactionbutton and also is called in onclick method for
+     * menu item.
+     * Here we make some Strings to share.
+     */
     @OnClick(R.id.share_fab)
-    public void onShareFabClick(){
+    public void onShareClick(){
         if(mCursor==null){return;}
         Date publishedDate = parsePublishedDate();
         String dateString = DateUtils.getRelativeTimeSpanString(
@@ -225,10 +267,12 @@ public class ArticleDetailFragment extends Fragment implements
                 mCursor.getString(ArticleLoader.Query.AUTHOR),
                 dateString
                 );
-        startActivity(Intent.createChooser(ShareCompat.IntentBuilder.from(getActivity())
-                        .setType("text/plain")
-                        .setText(shareString)
-                        .getIntent(), getString(R.string.action_share)));
+        if(getActivity()!=null) {
+            startActivity(Intent.createChooser(ShareCompat.IntentBuilder.from(getActivity())
+                    .setType("text/plain")
+                    .setText(shareString)
+                    .getIntent(), getString(R.string.action_share)));
+        }
     }
 
 
@@ -243,6 +287,10 @@ public class ArticleDetailFragment extends Fragment implements
         }
     }
 
+    /**
+     * Refreshing views after content changed.
+     * Getting Strings from cursor and setting them to textviews
+     */
     private void bindViews() {
         if (mRootView == null) {
             return;
@@ -256,9 +304,8 @@ public class ArticleDetailFragment extends Fragment implements
             return;
         }
 
-//            mRootView.setAlpha(0);
             mRootView.setVisibility(View.VISIBLE);
-//            mRootView.animate().alpha(1);
+
             String title = mCursor.getString(ArticleLoader.Query.TITLE);
             titleView.setText(title);
 
@@ -283,6 +330,9 @@ public class ArticleDetailFragment extends Fragment implements
                                 + "</font>"));
 
             }
+
+            // Using background thread to get long String from cursor and setting it to bodyView.
+            // It helped to reduce lags a little bit.
             new Thread(new Runnable() {
                 @Override
                 public void run() {
@@ -292,23 +342,30 @@ public class ArticleDetailFragment extends Fragment implements
                         public void run() {
                             setLoading(false);
                             bodyView.setText(bodyString);
+                            scroll();
                         }
                     });
                 }
             }).start();
 
             String photoUrl = mCursor.getString(ArticleLoader.Query.PHOTO_URL);
-
             Picasso.get()
                     .load(photoUrl)
                     .networkPolicy(NetworkPolicy.OFFLINE)
                     .into(target);
-
-            nestedScrollView.scrollTo(0,0);
-
     }
 
+    private void scroll(){
+        nestedScrollView.post(new Runnable() {
+            public void run() {
+                nestedScrollView.scrollTo(scrollCoordinates[0], scrollCoordinates[1]);
+            }
+        });
+    }
 
+    /**
+     * Methods of LoaderCallbacks
+     */
 
     @NonNull
     @Override
@@ -341,6 +398,10 @@ public class ArticleDetailFragment extends Fragment implements
         bindViews();
     }
 
+
+    /**
+     * Hide/show progress bar
+     */
     private void setLoading(boolean isLoading){
         if(isLoading){
             progressBar.setVisibility(View.VISIBLE);
@@ -356,10 +417,33 @@ public class ArticleDetailFragment extends Fragment implements
                     @Override
                     public boolean onPreDraw() {
                         sharedElement.getViewTreeObserver().removeOnPreDrawListener(this);
-                        getParentFragment().startPostponedEnterTransition();
+                        if(getParentFragment()!=null) {
+                            getParentFragment().startPostponedEnterTransition();
+                        }
                         return true;
                     }
                 });
     }
 
+    /**
+     * Saving scroll position on NestedScrollView.
+     */
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putIntArray(BUNDLE_SCROLL_POSITION, new int[]{nestedScrollView.getScrollX(), nestedScrollView.getScrollY()});
+    }
+
+    /**
+     * Method listening to "share" menu item click.
+     */
+    @Override
+    public boolean onMenuItemClick(MenuItem item) {
+        switch (item.getItemId()){
+            case R.id.share:
+                onShareClick();
+                return true;
+        }
+        return false;
+    }
 }

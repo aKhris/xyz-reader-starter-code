@@ -38,15 +38,21 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 
 /**
- * A simple {@link Fragment} subclass.
+ * Fragment with a recyclerview containing articles list.
+ *
+ * All the transition-related parts are taken from here:
+ * https://android-developers.googleblog.com/2018/02/continuous-shared-element-transitions.html
+ * (and corresponding github repository: https://github.com/google/android-transition-examples/tree/master/GridToPager)
  */
-public class ArticleListFragment extends Fragment implements LoaderManager.LoaderCallbacks<Cursor>,Adapter.AdapterCallback {
+public class ArticleListFragment extends Fragment
+        implements LoaderManager.LoaderCallbacks<Cursor>,Adapter.AdapterCallback, SwipeRefreshLayout.OnRefreshListener {
 
     @BindView(R.id.recycler_view) RecyclerView mRecyclerView;
     @BindView(R.id.swipe_refresh) SwipeRefreshLayout mSwipeRefresh;
 
-
+    // Loader id
     private static final int LOADER_ID_ALL_ARTICLES=0;
+
 
     private AtomicBoolean enterTransitionStarted;
 
@@ -55,13 +61,14 @@ public class ArticleListFragment extends Fragment implements LoaderManager.Loade
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         // Inflate the layout for this fragment
         View rootView = inflater.inflate(R.layout.fragment_article_list, container, false);
         ButterKnife.bind(this, rootView);
         enterTransitionStarted = new AtomicBoolean();
         int columnCount = getResources().getInteger(R.integer.list_column_count);
+
         GridLayoutManager layoutManager =
                 new GridLayoutManager(getContext(), columnCount);
         mRecyclerView.setLayoutManager(layoutManager);
@@ -84,25 +91,36 @@ public class ArticleListFragment extends Fragment implements LoaderManager.Loade
             }
             });
 
+        // Wait for necessary picture to get loaded and then resume this transition:
         postponeEnterTransition();
+
+        mSwipeRefresh.setOnRefreshListener(this);
+        mSwipeRefresh.setColorSchemeResources(R.color.secondaryLightColor, R.color.secondaryColor, R.color.secondaryDarkColor);
         return rootView;
     }
 
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-
         getLoaderManager().initLoader(LOADER_ID_ALL_ARTICLES, null, this);
-
     }
 
 
-    private void refresh(){
-        getActivity().startService(new Intent(getActivity(), UpdaterService.class));
+    /**
+     * Using intent service to load data from Internet
+     */
+    private void refreshDataFromService(){
+        if(getActivity()!=null) {
+            getActivity().startService(new Intent(getActivity(), UpdaterService.class));
+        }
     }
 
 
+    /**
+     * LoaderCallbacks methods
+     */
 
+    @NonNull
     @Override
     public Loader<Cursor> onCreateLoader(int id, Bundle args) {
         return ArticleLoader.newAllArticlesInstance(getContext());
@@ -110,11 +128,16 @@ public class ArticleListFragment extends Fragment implements LoaderManager.Loade
 
 
     @Override
-    public void onLoadFinished(Loader<Cursor> loader, Cursor cursor) {
+    public void onLoadFinished(@NonNull Loader<Cursor> loader, Cursor cursor) {
         if(cursor!=null && cursor.getCount()==0){
-            refresh();
+            //If there is no data in local database, then load it from Internet:
+            mSwipeRefresh.setRefreshing(true);
+            refreshDataFromService();
             return;
         }
+        //If there is some data, stop refreshing animation and bring recyclerview to full alpha.
+        mRecyclerView.animate().alpha(1f);
+        mSwipeRefresh.setRefreshing(false);
         Adapter adapter = new Adapter(cursor, this);
         adapter.setHasStableIds(true);
         mRecyclerView.setAdapter(adapter);
@@ -122,6 +145,11 @@ public class ArticleListFragment extends Fragment implements LoaderManager.Loade
 
     }
 
+
+    /**
+     * Scroll to correct position when returning from an article fragment
+     * for article that was navigated to using viewpager and that was not initially on the screen.
+     */
     private void scrollToCorrectPosition(){
         mRecyclerView.addOnLayoutChangeListener(
                 new View.OnLayoutChangeListener() {
@@ -157,7 +185,9 @@ public class ArticleListFragment extends Fragment implements LoaderManager.Loade
 
     }
 
-
+    /**
+     * Restart loader if loading from internet is complete
+     */
     private BroadcastReceiver mRefreshingReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -170,41 +200,63 @@ public class ArticleListFragment extends Fragment implements LoaderManager.Loade
         }
     };
 
+    /**
+     * Setting status bar color (because it's been changed in ArticleDetailFragment) back to initial
+     * value;
+     * Registering the receiver;
+     */
     @Override
     public void onResume() {
         super.onResume();
-        ColorUtils.setStatusBarColor(getActivity().getWindow(), ContextCompat.getColor(getContext(), R.color.primaryDarkColor));
+        if(getActivity()==null){return;}
+        ColorUtils.setStatusBarColor(getActivity().getWindow(), ContextCompat.getColor(getActivity().getApplicationContext(), R.color.primaryDarkColor));
         getActivity().registerReceiver(mRefreshingReceiver,
                 new IntentFilter(UpdaterService.BROADCAST_ACTION_STATE_CHANGE));
     }
 
+    /**
+     * Unregistering the receiver
+     */
     @Override
     public void onPause() {
         super.onPause();
-        getActivity().unregisterReceiver(mRefreshingReceiver);
+        if(getActivity()!=null) {
+            getActivity().unregisterReceiver(mRefreshingReceiver);
+        }
     }
 
     @Override
-    public void onLoaderReset(Loader<Cursor> loader) {
+    public void onLoaderReset(@NonNull Loader<Cursor> loader) {
         mRecyclerView.setAdapter(null);
     }
 
+
+    /**
+     *  Callback of recyclerview's adapter.
+     *  Replacing this fragment with viewpagerfragment.
+     */
     @Override
     public void onItemClick(View itemView, long itemId) {
-
-        ((TransitionSet) getExitTransition()).excludeTarget(itemView, true);
-
+        Object transition = getExitTransition();
+        if(transition!=null && transition instanceof TransitionSet) {
+            ((TransitionSet) transition).excludeTarget(itemView, true);
+        }
         View thumbnailView = itemView.findViewById(R.id.thumbnail);
-
-        getFragmentManager()
-                .beginTransaction()
-                .setReorderingAllowed(true)
-                .addSharedElement(thumbnailView, ViewCompat.getTransitionName(thumbnailView))
-                .replace(R.id.main_fragments_container, ViewPagerFragment.getInstance(itemId), ViewPagerFragment.class.getSimpleName())
-                .addToBackStack(null)
-                .commit();
+        if(getFragmentManager()!=null) {
+            getFragmentManager()
+                    .beginTransaction()
+                    .setReorderingAllowed(true)
+                    .addSharedElement(thumbnailView, ViewCompat.getTransitionName(thumbnailView))
+                    .replace(R.id.main_fragments_container, ViewPagerFragment.getInstance(itemId), ViewPagerFragment.class.getSimpleName())
+                    .addToBackStack(null)
+                    .commit();
+        }
     }
 
+    /**
+     * Callback of recyclerview's adapter.
+     * Called when Picasso loaded picture or got an error to postpone transition here;
+     */
     @Override
     public void onPictureLoaded(int position) {
         if (MainActivity.currentPosition != position) {
@@ -214,5 +266,16 @@ public class ArticleListFragment extends Fragment implements LoaderManager.Loade
             return;
         }
         startPostponedEnterTransition();
+    }
+
+
+    /**
+     * Callback of SwipeRefreshLayout.
+     * Force to update data from internet here.
+     */
+    @Override
+    public void onRefresh() {
+        mRecyclerView.animate().alpha(0.5f);
+        refreshDataFromService();
     }
 }

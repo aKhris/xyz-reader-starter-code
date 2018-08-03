@@ -30,7 +30,11 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 
 /**
- * A simple {@link Fragment} subclass.
+ * Fragment containing just the viewpager and adapter for it.
+ *
+ * All the transition-related parts are taken from here:
+ * https://android-developers.googleblog.com/2018/02/continuous-shared-element-transitions.html
+ * (and corresponding github repository: https://github.com/google/android-transition-examples/tree/master/GridToPager)
  */
 public class ViewPagerFragment extends Fragment
     implements LoaderManager.LoaderCallbacks<Cursor>
@@ -42,7 +46,6 @@ public class ViewPagerFragment extends Fragment
     private static final int LOADER_ID_ALL_ARTICLES=0;
 
     private long mStartId;
-    private long mSelectedItemId;
 
 
     private MyPagerAdapter mPagerAdapter;
@@ -67,7 +70,6 @@ public class ViewPagerFragment extends Fragment
         if(getArguments()!=null){
             mStartId = getArguments().getLong(BUNDLE_START_ID);
         }
-        mSelectedItemId = mStartId;
     }
 
     @Override
