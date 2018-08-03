@@ -25,11 +25,13 @@ package com.example.xyzreader.data;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Locale;
 
 import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.text.TextUtils;
+import android.util.Log;
 
 /**
  * Helper for building selection clauses for {@link SQLiteDatabase}. Each

@@ -8,5 +8,9 @@
     <string name="action_share">Share</string>
 
     <string name="up">Up</string>
+    <string name="transition_article_image">article_image_transition</string>
+    <string name="content_description_thumbnail">Small article picture</string>
+    <string name="content_desctiption_photo">Article picture</string>
+
 
 </resources>
