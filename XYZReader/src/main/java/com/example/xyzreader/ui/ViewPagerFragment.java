@@ -2,10 +2,9 @@ package com.example.xyzreader.ui;
 
 
 import android.database.Cursor;
-import android.graphics.Color;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.support.design.widget.AppBarLayout;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.app.FragmentStatePagerAdapter;
@@ -19,8 +18,8 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
-import com.example.xyzreader.ColorUtils;
 import com.example.xyzreader.R;
+import com.example.xyzreader.data.Article;
 import com.example.xyzreader.data.ArticleLoader;
 
 import java.util.List;
@@ -36,16 +35,16 @@ import butterknife.ButterKnife;
  * https://android-developers.googleblog.com/2018/02/continuous-shared-element-transitions.html
  * (and corresponding github repository: https://github.com/google/android-transition-examples/tree/master/GridToPager)
  */
+
 public class ViewPagerFragment extends Fragment
-    implements LoaderManager.LoaderCallbacks<Cursor>
+    implements LoaderManager.LoaderCallbacks<Cursor>,
+        ArticleDetailFragment.ArticleCallback
     {
     @BindView(R.id.pager) ViewPager mViewPager;
 
     private Cursor mCursor;
-    private final static String BUNDLE_START_ID = "start_id";
-    private static final int LOADER_ID_ALL_ARTICLES=0;
 
-    private long mStartId;
+    private static final int LOADER_ID_ALL_ARTICLES=0;
 
 
     private MyPagerAdapter mPagerAdapter;
@@ -54,26 +53,18 @@ public class ViewPagerFragment extends Fragment
         // Required empty public constructor
     }
 
-    public static ViewPagerFragment getInstance(long startId) {
-        Bundle bundle = new Bundle();
-        bundle.putLong(BUNDLE_START_ID, startId);
-        ViewPagerFragment viewPagerFragment = new ViewPagerFragment();
-        viewPagerFragment.setArguments(bundle);
-        return viewPagerFragment;
-    }
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        mStartId=0;
-        if(getArguments()!=null){
-            mStartId = getArguments().getLong(BUNDLE_START_ID);
-        }
+        //Retain instance to save mCursor variable to keep ArticleDetailFragment.ArticleCallback working
+        //after orientation change
+        setRetainInstance(true);
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         // Inflate the layout for this fragment
         View rootView = inflater.inflate(R.layout.fragment_view_pager, container, false);
@@ -100,7 +91,7 @@ public class ViewPagerFragment extends Fragment
                 // visible). To locate the fragment, call instantiateItem with the selection position.
                 // At this stage, the method will simply return the fragment at the position and will
                 // not create a new one.
-                Fragment currentFragment = (Fragment) mViewPager.getAdapter()
+                Fragment currentFragment = (Fragment) mPagerAdapter
                         .instantiateItem(mViewPager, MainActivity.currentPosition);
                 View view = currentFragment.getView();
                 if (view == null) {
@@ -121,44 +112,42 @@ public class ViewPagerFragment extends Fragment
     }
 
         @Override
-        public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
+        public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
             super.onViewCreated(view, savedInstanceState);
             getLoaderManager().initLoader(LOADER_ID_ALL_ARTICLES, null, this);
         }
 
+        @NonNull
         @Override
         public Loader<Cursor> onCreateLoader(int id, Bundle args) {
             return ArticleLoader.newAllArticlesInstance(getContext());
         }
 
         @Override
-        public void onLoadFinished(Loader<Cursor> loader, Cursor cursor) {
+        public void onLoadFinished(@NonNull Loader<Cursor> loader, Cursor cursor) {
             mCursor = cursor;
             mPagerAdapter.notifyDataSetChanged();
-
-            // Select the start ID
-            if (mStartId > 0) {
-                mCursor.moveToFirst();
-                // TODO: optimize
-                while (!mCursor.isAfterLast()) {
-                    if (mCursor.getLong(ArticleLoader.Query._ID) == mStartId) {
-                        final int position = mCursor.getPosition();
-                        mViewPager.setCurrentItem(position, false);
-                        break;
-                    }
-                    mCursor.moveToNext();
-                }
-                mStartId = 0;
-            }
+            mViewPager.setCurrentItem(MainActivity.currentPosition, false);
         }
 
         @Override
-        public void onLoaderReset(Loader<Cursor> loader) {
+        public void onLoaderReset(@NonNull Loader<Cursor> loader) {
             mCursor = null;
             mPagerAdapter.notifyDataSetChanged();
         }
 
+        /**
+         * called from ArticleDetailFragment when it's ready to fill it's views with article details;
+         */
+        @Override
+        public Article getArticle(final int positionInCursor) {
+            mCursor.moveToPosition(positionInCursor);
+            return Article.parseCursor(mCursor);
+        }
 
+        /**
+         * Simple adapter for Viewpager
+         */
         private class MyPagerAdapter extends FragmentStatePagerAdapter {
         MyPagerAdapter(FragmentManager fm) {
             super(fm);
@@ -166,8 +155,7 @@ public class ViewPagerFragment extends Fragment
 
         @Override
         public Fragment getItem(int position) {
-            mCursor.moveToPosition(position);
-            return ArticleDetailFragment.newInstance(mCursor.getLong(ArticleLoader.Query._ID));
+            return ArticleDetailFragment.newInstance(position);
         }
 
         @Override

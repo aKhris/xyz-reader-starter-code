@@ -11,6 +11,8 @@
     <string name="transition_article_image">article_image_transition</string>
     <string name="content_description_thumbnail">Small article picture</string>
     <string name="content_desctiption_photo">Article picture</string>
+    <string name="message_check_internet">Please check Internet connection!</string>
+    <string name="retry">Retry</string>
 
 
 </resources>

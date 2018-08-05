@@ -3,7 +3,6 @@ package com.example.xyzreader.ui;
 
 import android.annotation.SuppressLint;
 import android.content.Intent;
-import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
@@ -12,10 +11,8 @@ import android.support.design.widget.AppBarLayout;
 import android.support.design.widget.CollapsingToolbarLayout;
 import android.support.design.widget.FloatingActionButton;
 import android.support.v4.app.Fragment;
-import android.support.v4.app.LoaderManager;
 import android.support.v4.app.ShareCompat;
 import android.support.v4.content.ContextCompat;
-import android.support.v4.content.Loader;
 import android.support.v4.view.ViewCompat;
 import android.support.v4.widget.NestedScrollView;
 import android.support.v7.graphics.Palette;
@@ -33,10 +30,10 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import com.example.xyzreader.AppBarStateChangeListener;
-import com.example.xyzreader.ColorUtils;
+import com.example.xyzreader.utils.ColorUtils;
 import com.example.xyzreader.R;
-import com.example.xyzreader.TransitionUtils;
-import com.example.xyzreader.data.ArticleLoader;
+import com.example.xyzreader.utils.TransitionUtils;
+import com.example.xyzreader.data.Article;
 import com.squareup.picasso.NetworkPolicy;
 import com.squareup.picasso.Picasso;
 import com.squareup.picasso.Target;
@@ -59,7 +56,7 @@ import butterknife.OnClick;
  * (and corresponding github repository: https://github.com/google/android-transition-examples/tree/master/GridToPager)
  */
 public class ArticleDetailFragment extends Fragment implements
-        LoaderManager.LoaderCallbacks<Cursor>, MenuItem.OnMenuItemClickListener {
+        MenuItem.OnMenuItemClickListener{
 
     @BindView(R.id.article_title) TextView titleView;
     @BindView(R.id.article_byline) TextView bylineView;
@@ -84,14 +81,14 @@ public class ArticleDetailFragment extends Fragment implements
     private static final String TAG = "ArticleDetailFragment";
 
     // Key name of argument passing into static new instance method
-    public static final String ARG_ITEM_ID = "item_id";
-    private long mItemId;
+    public static final String ARG_ITEM_POSITION_IN_CURSOR = "position_in_cursor";
+    private int mPositionInCursor;
 
     //Loader ID
     private static final int LOADER_ID_ONE_ARTICLE=1;
 
-    //Cursor containing one article for this fragment
-    private Cursor mCursor;
+    //Cursor containing one mArticle for this fragment
+    private Article mArticle;
 
     private View mRootView;
 
@@ -140,7 +137,7 @@ public class ArticleDetailFragment extends Fragment implements
 
         }
     };
-
+    private ArticleCallback articleCallback;
 
 
     /**
@@ -154,9 +151,9 @@ public class ArticleDetailFragment extends Fragment implements
     /**
      * Static method to instantiate new fragment and set itemId as an argument
      */
-    public static ArticleDetailFragment newInstance(long itemId) {
+    public static ArticleDetailFragment newInstance(int positionInCursor) {
         Bundle arguments = new Bundle();
-        arguments.putLong(ARG_ITEM_ID, itemId);
+        arguments.putInt(ARG_ITEM_POSITION_IN_CURSOR, positionInCursor);
         ArticleDetailFragment fragment = new ArticleDetailFragment();
         fragment.setArguments(arguments);
         return fragment;
@@ -170,26 +167,21 @@ public class ArticleDetailFragment extends Fragment implements
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        if (getArguments()!=null && getArguments().containsKey(ARG_ITEM_ID)) {
-            mItemId = getArguments().getLong(ARG_ITEM_ID);
+        if (getParentFragment() != null && getParentFragment() instanceof ArticleCallback) {
+            this.articleCallback = (ArticleCallback) getParentFragment();
+        } else {
+            throw new UnsupportedOperationException("Parent fragment must implement ArticleCallback interface!");
         }
 
-        if(savedInstanceState!=null && savedInstanceState.containsKey(BUNDLE_SCROLL_POSITION)){
+        if (getArguments() != null && getArguments().containsKey(ARG_ITEM_POSITION_IN_CURSOR)) {
+            mPositionInCursor = getArguments().getInt(ARG_ITEM_POSITION_IN_CURSOR);
+        }
+
+        if (savedInstanceState != null && savedInstanceState.containsKey(BUNDLE_SCROLL_POSITION)) {
             scrollCoordinates = savedInstanceState.getIntArray(BUNDLE_SCROLL_POSITION);
         }
 
     }
-
-    @Override
-    public void onActivityCreated(Bundle savedInstanceState) {
-        super.onActivityCreated(savedInstanceState);
-        // In support library r8, calling initLoader for a fragment in a FragmentPagerAdapter in
-        // the fragment's onCreate may cause the same LoaderManager to be dealt to multiple
-        // fragments because their mIndex is -1 (haven't been added to the activity yet). Thus,
-        // we do this in onActivityCreated.
-        getLoaderManager().initLoader(LOADER_ID_ONE_ARTICLE, null, this);
-    }
-
 
     /**
      * Initialize views here
@@ -201,7 +193,7 @@ public class ArticleDetailFragment extends Fragment implements
         ButterKnife.bind(this, mRootView);
 
         //setting transition name according to given itemID
-        ViewCompat.setTransitionName(mPhotoView, TransitionUtils.getTransitionName(mItemId));
+        ViewCompat.setTransitionName(mPhotoView, TransitionUtils.getTransitionName(mPositionInCursor));
 
         //setting up toolbar.
         //setting navigation icon to make possible to go back to the fragment with a list:
@@ -243,6 +235,8 @@ public class ArticleDetailFragment extends Fragment implements
 
         //show progress bar to show the loading process of the long text to textview
         setLoading(true);
+        mArticle = articleCallback.getArticle(mPositionInCursor);
+        bindViews();
 
         return mRootView;
     }
@@ -254,7 +248,6 @@ public class ArticleDetailFragment extends Fragment implements
      */
     @OnClick(R.id.share_fab)
     public void onShareClick(){
-        if(mCursor==null){return;}
         Date publishedDate = parsePublishedDate();
         String dateString = DateUtils.getRelativeTimeSpanString(
                 publishedDate.getTime(),
@@ -263,8 +256,8 @@ public class ArticleDetailFragment extends Fragment implements
 
         String shareString = String.format(Locale.getDefault(),
                 "\"%s\" by %s (%s)",
-                mCursor.getString(ArticleLoader.Query.TITLE),
-                mCursor.getString(ArticleLoader.Query.AUTHOR),
+                mArticle.getTitle(),
+                mArticle.getAuthor(),
                 dateString
                 );
         if(getActivity()!=null) {
@@ -278,7 +271,7 @@ public class ArticleDetailFragment extends Fragment implements
 
     private Date parsePublishedDate() {
         try {
-            String date = mCursor.getString(ArticleLoader.Query.PUBLISHED_DATE);
+            String date = mArticle.getDate();
             return dateFormat.parse(date);
         } catch (ParseException ex) {
             Log.e(TAG, ex.getMessage());
@@ -296,7 +289,15 @@ public class ArticleDetailFragment extends Fragment implements
             return;
         }
 
-        if(mCursor==null || !mCursor.moveToFirst()){
+//        if(mCursor==null || !mCursor.moveToFirst()){
+//            mRootView.setVisibility(View.GONE);
+//            titleView.setText("N/A");
+//            bylineView.setText("N/A" );
+//            bodyView.setText("N/A");
+//            return;
+//        }
+
+        if(mArticle ==null){
             mRootView.setVisibility(View.GONE);
             titleView.setText("N/A");
             bylineView.setText("N/A" );
@@ -305,11 +306,8 @@ public class ArticleDetailFragment extends Fragment implements
         }
 
             mRootView.setVisibility(View.VISIBLE);
-
-            String title = mCursor.getString(ArticleLoader.Query.TITLE);
-            titleView.setText(title);
-
-            toolbar.setTitle(title);
+            titleView.setText(mArticle.getTitle());
+            toolbar.setTitle(mArticle.getTitle());
 
             Date publishedDate = parsePublishedDate();
             if (!publishedDate.before(START_OF_EPOCH.getTime())) {
@@ -319,14 +317,14 @@ public class ArticleDetailFragment extends Fragment implements
                                 System.currentTimeMillis(), DateUtils.HOUR_IN_MILLIS,
                                 DateUtils.FORMAT_ABBREV_ALL).toString()
                                 + " by <font color='#ffffff'>"
-                                + mCursor.getString(ArticleLoader.Query.AUTHOR)
+                                + mArticle.getAuthor()
                                 + "</font>"));
 
             } else {
                 // If date is before 1902, just show the string
                 bylineView.setText(Html.fromHtml(
                         outputFormat.format(publishedDate) + " by <font color='#ffffff'>"
-                        + mCursor.getString(ArticleLoader.Query.AUTHOR)
+                        + mArticle.getAuthor()
                                 + "</font>"));
 
             }
@@ -336,7 +334,7 @@ public class ArticleDetailFragment extends Fragment implements
             new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    final CharSequence bodyString = Html.fromHtml(mCursor.getString(ArticleLoader.Query.BODY).replaceAll("(\r\n|\n)", "<br />"));
+                    final CharSequence bodyString = Html.fromHtml(mArticle.getBody().replaceAll("(\r\n|\n)", "<br />"));
                     bodyView.post(new Runnable() {
                         @Override
                         public void run() {
@@ -348,9 +346,8 @@ public class ArticleDetailFragment extends Fragment implements
                 }
             }).start();
 
-            String photoUrl = mCursor.getString(ArticleLoader.Query.PHOTO_URL);
             Picasso.get()
-                    .load(photoUrl)
+                    .load(mArticle.getPhoto())
                     .networkPolicy(NetworkPolicy.OFFLINE)
                     .into(target);
     }
@@ -361,41 +358,6 @@ public class ArticleDetailFragment extends Fragment implements
                 nestedScrollView.scrollTo(scrollCoordinates[0], scrollCoordinates[1]);
             }
         });
-    }
-
-    /**
-     * Methods of LoaderCallbacks
-     */
-
-    @NonNull
-    @Override
-    public Loader<Cursor> onCreateLoader(int i, Bundle bundle) {
-        return ArticleLoader.newInstanceForItemId(getActivity(), mItemId);
-    }
-
-    @Override
-    public void onLoadFinished(@NonNull Loader<Cursor> cursorLoader, Cursor cursor) {
-        Log.v(getClass().getSimpleName(), "Load finished:\nloader: "+cursorLoader.toString()+"\nfor fragment: "+this.toString());
-        if (!isAdded()) {
-            if (cursor != null) {
-                cursor.close();
-            }
-            return;
-        }
-
-        mCursor = cursor;
-        if (mCursor != null && !mCursor.moveToFirst()) {
-            Log.e(TAG, "Error reading item detail cursor");
-            mCursor.close();
-            mCursor = null;
-        }
-        bindViews();
-    }
-
-    @Override
-    public void onLoaderReset(@NonNull Loader<Cursor> cursorLoader) {
-        mCursor = null;
-        bindViews();
     }
 
 
@@ -445,5 +407,10 @@ public class ArticleDetailFragment extends Fragment implements
                 return true;
         }
         return false;
+    }
+
+
+    public interface ArticleCallback{
+        Article getArticle(int positionInCursor);
     }
 }

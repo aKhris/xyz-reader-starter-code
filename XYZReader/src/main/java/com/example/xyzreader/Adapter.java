@@ -1,5 +1,6 @@
 package com.example.xyzreader;
 
+import android.annotation.SuppressLint;
 import android.database.Cursor;
 import android.support.annotation.NonNull;
 import android.support.v4.view.ViewCompat;
@@ -15,6 +16,7 @@ import android.widget.TextView;
 
 import com.example.xyzreader.data.ArticleLoader;
 import com.example.xyzreader.ui.MainActivity;
+import com.example.xyzreader.utils.TransitionUtils;
 import com.squareup.picasso.Callback;
 import com.squareup.picasso.Picasso;
 
@@ -22,12 +24,14 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.Locale;
 
 public class Adapter extends RecyclerView.Adapter<Adapter.ViewHolder> {
 
     private Cursor mCursor;
     private final static String TAG = Adapter.class.getSimpleName();
-    private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.sss");
+    private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.sss", Locale.getDefault());
+    @SuppressLint("SimpleDateFormat")
     private SimpleDateFormat outputFormat = new SimpleDateFormat();
     private GregorianCalendar START_OF_EPOCH = new GregorianCalendar(2,1,1);
 
@@ -44,8 +48,9 @@ public class Adapter extends RecyclerView.Adapter<Adapter.ViewHolder> {
         return mCursor.getLong(ArticleLoader.Query._ID);
     }
 
+    @NonNull
     @Override
-    public ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.list_item_article, parent, false);
         final ViewHolder vh = new ViewHolder(view);
         view.setOnClickListener(new View.OnClickListener() {
@@ -53,7 +58,7 @@ public class Adapter extends RecyclerView.Adapter<Adapter.ViewHolder> {
             public void onClick(View view) {
                 int position = vh.getAdapterPosition();
                 MainActivity.currentPosition = position;
-                adapterCallback.onItemClick(vh.itemView, getItemId(position));
+                adapterCallback.onItemClick(vh.itemView, position);
             }
         });
         return vh;
@@ -131,7 +136,7 @@ public class Adapter extends RecyclerView.Adapter<Adapter.ViewHolder> {
     }
 
     public interface AdapterCallback {
-        void onItemClick(View itemView, long itemId);
+        void onItemClick(View itemView, int position);
         void onPictureLoaded(int position);
     }
 }

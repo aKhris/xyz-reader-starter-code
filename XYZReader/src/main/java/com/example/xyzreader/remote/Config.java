@@ -14,7 +14,8 @@ public class Config {
         try {
             url = new URL("https://go.udacity.com/xyz-reader-json" );
         } catch (MalformedURLException ignored) {
-            // TODO: show a snackbar?
+            //instead of throwing an error the snackbar in ArticleListFragment is used
+            // telling there is no connection, would you like to retry?
             Log.e(TAG, "Please check your internet connection.");
         }
 
