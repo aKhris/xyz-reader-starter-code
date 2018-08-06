@@ -72,6 +72,7 @@
             android:layout_height="wrap_content"
             android:layout_margin="@dimen/article_detail_cardview_margin"
             app:cardCornerRadius="@dimen/cardview_default_radius"
+            app:cardElevation="@dimen/cardview_elevation"
             >
 
             <LinearLayout
